@@ -1,0 +1,230 @@
+---
+title: "Praktikum 5 Anreg"
+author: "Daffa Lukman Wahid Al Jailani"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown
+---
+
+# Library
+
+```{r}
+library(readxl) # untuk membaca data
+library(GGally) # untuk menghasilkan matriks hubungan antarpeubah
+library(corrplot) # untuk menghasilkan matriks korelasi
+library(dplyr) # untuk manipulasi data
+library(car) # untuk memeriksa multikolinearitas
+```
+
+# Data
+
+```{r}
+data <- read_excel("C:\\Users\\Lenovo\\Downloads\\Dataset Anreg Daffa Lukman Wahid Al Jailani (2).xlsx")
+head(data) # menampilkan sekian data awal
+str(data) # menampilkan tipe data setiap peubah
+summary(data) # menampilkan ringkasan data
+```
+
+```{r}
+colnames(data) <- c(
+  "Provinsi",
+  "AHH",
+  "APS",
+  "IPM",
+  "Kemiskinan",
+  "AirMinum",
+  "Sanitasi",
+  "PDRB",
+  "RLS",
+  "Kebahagiaan"
+)
+```
+
+```{r}
+# Buang baris pertama
+data <- data[-1, ]
+
+# Ubah semua kolom kecuali Provinsi menjadi numerik
+data[-1] <- lapply(data[-1], as.numeric)
+
+str(data)
+```
+
+
+
+Data yang digunakan merupakan data dari 35 provinsi di Indonesia pada tahun 2021.
+Untuk mempermudah proses analisis, peubah **Provinsi** tidak digunakan dalam pembentukan model karena hanya berfungsi sebagai identitas pengamatan. Oleh karena itu, peubah tersebut dihapus dari data. Pada praktikum ini akan dibentuk dua model regresi, yaitu model awal yang menggunakan seluruh peubah penjelas dan model kedua yang diperoleh setelah evaluasi multikolinearitas melalui nilai Variance Inflation Factor (VIF). Model kedua diharapkan menghasilkan model regresi yang lebih baik dan lebih mudah diinterpretasikan.
+
+
+```{r}
+dt <- select(data, -Provinsi)
+```
+
+# Eksplorasi data
+
+```{r}
+hist(dt$Kebahagiaan,
+     main="Histogram Indeks Kebahagiaan")
+```
+
+```{r}
+boxplot(dt$Kebahagiaan,
+        main="Boxplot Indeks Kebahagiaan")
+```
+
+```{r}
+ggpairs(
+  dt,
+  upper=list(continuous=wrap("cor",size=3)),
+  title="Scatterplot Matrix"
+)
+```
+
+```{r}
+cor_matrix <- cor(dt)
+
+corrplot(
+  cor_matrix,
+  method="color",
+  type="lower",
+  addCoef.col="black",
+  tl.col="black"
+)
+```
+
+Hasil matriks scatterplot dan korelasi menunjukkan bahwa peubah respon Indeks Kebahagiaan memiliki hubungan yang relatif lemah dengan seluruh peubah penjelas. Nilai korelasi terbesar hanya sekitar 0,19 pada peubah Indeks Pembangunan Manusia (IPM), sedangkan korelasi dengan peubah lainnya berkisar antara -0,13 hingga 0,13. Hal ini menunjukkan bahwa secara individual hubungan linier antara masing-masing peubah penjelas dengan Indeks Kebahagiaan tidak terlalu kuat.
+
+Di sisi lain, terdapat beberapa peubah penjelas yang memiliki korelasi cukup tinggi satu sama lain, di antaranya:
+
+Angka Partisipasi Sekolah (APS) dan Indeks Pembangunan Manusia (IPM) memiliki koefisien korelasi sebesar 0,78.
+Angka Partisipasi Sekolah (APS) dan Rata-rata Lama Sekolah (RLS) memiliki koefisien korelasi sebesar 0,76.
+Persentase Penduduk Miskin memiliki korelasi negatif yang cukup kuat dengan APS sebesar -0,67, serta dengan RLS sebesar -0,58.
+
+Korelasi yang cukup tinggi antar beberapa peubah penjelas tersebut mengindikasikan adanya potensi multikolinearitas pada model regresi. Oleh karena itu, diperlukan pemeriksaan lebih lanjut menggunakan Variance Inflation Factor (VIF) untuk memastikan apakah multikolinearitas tersebut dapat memengaruhi hasil estimasi model regresi.
+
+# Pemodelan
+
+## Tanpa Fungsi
+
+Perhitungan nilai $\hat{\beta}$ secara matriks dapat dilakukan dengan rumus berikut.
+
+$$\hat{\beta} = (X'X)^{-1} X'y$$
+
+```{r}
+# pembentukan matriks
+n <- nrow(dt)
+
+x0 <- rep(1,n)
+
+X <- data.frame(
+  x0,
+  dt$AHH,
+  dt$APS,
+  dt$IPM,
+  dt$Kemiskinan,
+  dt$AirMinum,
+  dt$Sanitasi,
+  dt$PDRB,
+  dt$RLS
+)
+
+X <- as.matrix(X)
+
+Y <- dt$Kebahagiaan
+```
+
+```{r}
+beta_duga <- solve(t(X)%*%X)%*%t(X)%*%Y
+beta_duga
+```
+
+Hasil tersebut menjelaskan bahwa persamaan yang terbentuk adalah
+$$
+\hat{Y}=99.5981+0.000003AHH-0.9103APS+1.7698IPM-1.8610Kemiskinan+0.0931AirMinum+0.1413Sanitasi-0.0066PDRB+0.1094RLS
+$$
+
+Selang kepercayaan dan pengujian signifikansi setiap parameter dapat dilakukan dengan menghitung keragaman tiap dugaan parameter. Secara umum, nilai ragam dugaan parameter $\hat{\beta}_j$ dapat dihitung melalui rumus berikut.
+
+$$Var(\hat{\beta}_j) = \hat{\sigma}^2 C_{jj}$$
+Dengan matriks $C$ adalah matriks $(X'X)^{-1}$ 
+
+```{r}
+c <- data.frame(solve(t(x)%*%x))
+```
+
+Unsur diagonal dari matriks $C$ dapat digunakan untuk menghitung nilai galat baku dari setiap dugaan parameter. Galat baku ini dapat digunakan untuk menghitung selang kepercayaan dari dugaan yang dihasilkan.
+
+$$SE(\hat{\beta}_j) = \sqrt{Var(\hat{\beta}_j)} = \sqrt{\sigma^2 C_{jj}} = \hat{\sigma}\sqrt{c_{ii}}$$
+
+Misal ingin dihitung selang kepercayaan dari dugaan parameter $\beta_2$, maka
+
+```{r}
+# Nilai prediksi
+Y_hat <- X %*% beta_duga
+
+# Residual
+residual <- Y - Y_hat
+
+# Banyak pengamatan dan parameter
+n <- nrow(X)
+p <- ncol(X)
+
+# Kuadrat Tengah Galat
+KTG <- sum(residual^2)/(n-p)
+
+# Matriks C
+C <- solve(t(X) %*% X)
+
+# Ambil elemen diagonal untuk IPM
+c44 <- C[4,4]
+
+# Standard Error
+(SE_IPM <- sqrt(KTG*c44))
+```
+
+```{r}
+alpha <- 0.05
+
+(BB_IPM <- beta_duga[4,1] - abs(qt(alpha/2, df=n-p))*SE_IPM)
+
+(BA_IPM <- beta_duga[4,1] + abs(qt(alpha/2, df=n-p))*SE_IPM)
+```
+
+Dengan demikian, kita dapat ketahui selang kepercayaan untuk $\hat{\beta}_2$ sebagai berikut.
+$$0.3567035<\hat{\beta}_2<3.182815$$
+
+Pada kasus selang kepercayaan $\hat{\beta}_2$ di atas, didapati bahwa dugaan parameter berada dalam rentang yang mengandung nilai 0. Dengan demikian, dapat dimaknai bahwa diduga nilai parameter $\hat{\beta}_2$ bernilai 0 atau tidak signifikan dalam taraf nyata 5%.
+
+
+# Dengan Fungsi
+
+```{r}
+model1 <- lm(Kebahagiaan ~ ., data = dt)
+
+summary(model1)
+```
+
+Hasil pendugaan parameter menggunakan fungsi lm() menghasilkan koefisien regresi yang sama dengan hasil perhitungan secara matriks. Hal ini menunjukkan bahwa proses perhitungan manual yang dilakukan telah sesuai dengan hasil yang diperoleh menggunakan fungsi bawaan R. Selanjutnya, melalui ringkasan model dapat diketahui signifikansi masing-masing peubah, uji signifikansi model secara simultan, serta ukuran kecocokan model berdasarkan nilai koefisien determinasi.
+
+# Pemeriksaan Multikoliniearitas
+
+```{r}
+vif(model1)
+```
+
+Hasil pengujian multikolinearitas menunjukkan bahwa seluruh peubah memiliki nilai VIF kurang dari 10, sehingga tidak terdapat indikasi multikolinearitas yang serius pada model regresi. Meskipun demikian, peubah Angka Partisipasi Sekolah (APS) memiliki nilai VIF tertinggi, yaitu sebesar 7,457, yang menunjukkan adanya hubungan yang cukup kuat dengan beberapa peubah penjelas lainnya. Namun, karena nilainya masih berada di bawah batas umum sebesar 10, seluruh peubah tetap dipertahankan dalam model.
+
+# Pemodelan Kedua
+
+```{r}
+model2 <- lm(
+  Kebahagiaan ~ AHH + IPM + Kemiskinan + AirMinum + Sanitasi + PDRB + RLS,
+  data = dt
+)
+
+summary(model2)
+
+vif(model2)
+```
+
+Model kedua dibentuk dengan menghilangkan peubah APS yang memiliki nilai VIF paling tinggi pada model awal. Tujuannya adalah untuk melihat perubahan tingkat multikolinearitas serta mengevaluasi apakah model yang lebih sederhana memberikan hasil yang lebih baik tanpa mengurangi kemampuan model dalam menjelaskan variasi Indeks Kebahagiaan.
